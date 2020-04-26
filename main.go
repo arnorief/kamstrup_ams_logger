@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,7 +15,7 @@ import (
 	"github.com/tarm/serial"
 )
 
-type dateTime struct {
+type dateTimeT struct {
 	Year        uint16
 	Month       uint8
 	Day         uint8
@@ -27,48 +28,58 @@ type dateTime struct {
 	ClockStatus uint8
 }
 
+type meterDataT struct {
+	clock              dateTimeT
+	meterID            string
+	meterType          string
+	activePowerPlus    int
+	activePowerMinus   int
+	reactivePowerPlus  int
+	reactivePowerMinus int
+	l1Current          float32
+	l2Current          float32
+	l3Current          float32
+	l1Voltage          int
+	l2Voltage          int
+	l3Voltage          int
+}
+
+var meter meterDataT
+
 func main() {
 	var outputBuffer bytes.Buffer
-	// buffer := make([]byte, 1024)
+	buffer := make([]byte, 1024)
 
-	data, _ := hex.DecodeString("7ea0e22b2113239ae6e7000f000000000c07e4041a07081400ff80000002190a0e4b616d73747275705f563030303109060101000005ff0a103537303635363732303531303234363209060101600101ff0a1236383431313231424e32343331303130343009060101010700ff06000011f409060101020700ff060000000009060101030700ff060000014009060101040700ff0600000000090601011f0700ff060000072809060101330700ff06000005d309060101470700ff060000021009060101200700ff1200e409060101340700ff1200e609060101480700ff1200e9033c7e")
-	outputBuffer.Write(data)
-
-	// stream, err := openSerialDevice("/dev/ttyUSB0")
-	// if err != nil {
-	// 	log.Fatalf("Error opening serial port: %s", err.Error())
-	// }
-
-	// defer stream.Close()
-
-	// log.Println("Serial port opened")
-
-	err := decodeData(outputBuffer)
+	stream, err := openSerialDevice("/dev/ttyUSB0")
 	if err != nil {
-		log.Printf("Error decoding data: %v", err)
+		log.Fatalf("Error opening serial port: %s", err.Error())
 	}
 
-	// for {
-	// 	numBytes, err := stream.Read(buffer)
-	// 	if err != nil && err != io.EOF {
-	// 		log.Printf("Error reading data from serial device: %v", err)
-	// 	} else if err == io.EOF && outputBuffer.Len() > 0 {
-	// 		// Last byte received in this stream
-	// 		log.Printf("%d bytes received", outputBuffer.Len())
+	defer stream.Close()
 
-	// 		err := decodeData(outputBuffer)
-	// 		if err != nil {
-	// 			log.Printf("Error decoding data: %v", err)
-	// 		}
+	log.Println("Serial port opened")
 
-	// 		outputBuffer.Reset()
-	// 	}
+	for {
+		numBytes, err := stream.Read(buffer)
+		if err != nil && err != io.EOF {
+			log.Printf("Error reading data from serial device: %v", err)
+		} else if err == io.EOF && outputBuffer.Len() > 0 {
+			// Last byte received in this stream
+			log.Printf("%d bytes received", outputBuffer.Len())
 
-	// 	if numBytes > 0 {
-	// 		bytesRead := buffer[0:numBytes]
-	// 		outputBuffer.Write(bytesRead)
-	// 	}
-	// }
+			err := decodeData(outputBuffer)
+			if err != nil {
+				log.Printf("Error decoding data: %v", err)
+			}
+
+			outputBuffer.Reset()
+		}
+
+		if numBytes > 0 {
+			bytesRead := buffer[0:numBytes]
+			outputBuffer.Write(bytesRead)
+		}
+	}
 }
 
 func readCPUStats() {
@@ -132,19 +143,18 @@ func decodeData(buf bytes.Buffer) error {
 	log.Println("Information header found")
 
 	// Clock
+	var clock dateTimeT
 	clockLen, _ := reader.ReadUint8()
-	fmt.Printf("Clock field length: %d\n", clockLen)
 
 	_, b, err = reader.ReadBytes(int(clockLen))
 	if err != nil {
 		return err
 	}
-
-	var clock dateTime
 	if err := binstruct.UnmarshalBE(b, &clock); err != nil {
 		return err
 	}
 	log.Printf("Clock: %v", clock)
+	meter.clock = clock
 
 	// Struct
 	if structInd, _ := reader.ReadUint8(); structInd != 2 {
@@ -164,14 +174,16 @@ func decodeData(buf bytes.Buffer) error {
 	}
 	log.Printf("Version identifier (%d): %s", length, str)
 
-	for i := 1; i <= (int(structLength)-1)/2; i++ {
+	structLength--
+
+	for i := 1; i <= (int(structLength))/2; i++ {
 		// Each OBIS parameter consists of two elements, the identifier and the value.
 		typeField, err := reader.ReadUint8()
 		if err != nil || int(typeField) != 9 {
 			return fmt.Errorf("unexpected type field")
 		}
 
-		if err = decodeObisParameter(reader); err != nil {
+		if err = decodeObisField(reader); err != nil {
 			return err
 		}
 	}
@@ -193,10 +205,12 @@ func decodeData(buf bytes.Buffer) error {
 	}
 	log.Printf("Frame end flag: %s", hex.EncodeToString(b))
 
+	log.Printf("Meter data: %v", meter)
+
 	return nil
 }
 
-func decodeObisParameter(reader binstruct.Reader) error {
+func decodeObisField(reader binstruct.Reader) error {
 	identifierLength, _ := reader.ReadUint8()
 
 	var obisID string
@@ -215,29 +229,87 @@ func decodeObisParameter(reader binstruct.Reader) error {
 	log.Printf("OBIS ID: %s", obisID)
 
 	// Value part
+	err := decodeObisValue(obisID, reader)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func decodeObisValue(obisID string, reader binstruct.Reader) error {
 	valueType, err := reader.ReadUint8()
 	if err != nil {
 		return err
 	}
 
-	var value interface{}
+	var str string
+	var byteValue []byte
 
 	switch valueType {
 	case 6: // unsigned, 4 bytes
-		_, byteValue, _ := reader.ReadBytes(4)
-		value = byteValue
+		_, byteValue, _ = reader.ReadBytes(4)
 	case 10: // string
-		_, str, err := decodeString(reader)
+		_, str, err = decodeString(reader)
 		if err != nil {
 			return err
 		}
-		value = str
 	case 18: // unsigned, 2 bytes
-		_, byteValue, _ := reader.ReadBytes(2)
-		value = byteValue
+		_, byteValue, _ = reader.ReadBytes(2)
 	}
 
-	log.Printf("Value: %v", value)
+	valueReader := binstruct.NewReaderFromBytes(byteValue, binary.BigEndian, false)
+
+	switch obisID {
+	case "1.1.0.0.5.255": // Meter ID
+		meter.meterID = str
+		log.Printf("Meter ID: %s", meter.meterID)
+	case "1.1.96.1.1.255": // Meter type
+		meter.meterType = str
+		log.Printf("Meter Type: %s", meter.meterType)
+	case "1.1.1.7.0.255": // Active Power +
+		v, _ := valueReader.ReadUint32()
+		meter.activePowerPlus = int(v)
+		log.Printf("Active Power +: %d", meter.activePowerPlus)
+	case "1.1.2.7.0.255": // Active Power -
+		v, _ := valueReader.ReadUint32()
+		meter.activePowerMinus = int(v)
+		log.Printf("Active Power -: %d", meter.activePowerMinus)
+	case "1.1.3.7.0.255": // Reactive Power +
+		v, _ := valueReader.ReadUint32()
+		meter.reactivePowerPlus = int(v)
+		log.Printf("Reactive Power +: %d", meter.reactivePowerPlus)
+	case "1.1.4.7.0.255": // Reactive Power -
+		v, _ := valueReader.ReadUint32()
+		meter.reactivePowerMinus = int(v)
+		log.Printf("Reactive Power -: %d", meter.reactivePowerMinus)
+	case "1.1.31.7.0.255": // L1 Current
+		v, _ := valueReader.ReadUint32()
+		meter.l1Current = float32(v) / 100
+		log.Printf("L1 Current: %f", meter.l1Current)
+	case "1.1.51.7.0.255": // L2 Current
+		v, _ := valueReader.ReadUint32()
+		meter.l2Current = float32(v) / 100
+		log.Printf("L2 Current: %f", meter.l2Current)
+	case "1.1.71.7.0.255": // L3 Current
+		v, _ := valueReader.ReadUint32()
+		meter.l3Current = float32(v) / 100
+		log.Printf("L3 Current: %f", meter.l3Current)
+	case "1.1.32.7.0.255": // L1 Voltage
+		v, _ := valueReader.ReadUint16()
+		meter.l1Voltage = int(v)
+		log.Printf("L1 Voltage: %d", meter.l1Voltage)
+	case "1.1.52.7.0.255": // L2 Voltage
+		v, _ := valueReader.ReadUint16()
+		meter.l2Voltage = int(v)
+		log.Printf("L2 Voltage: %d", meter.l2Voltage)
+	case "1.1.72.7.0.255": // L3 Voltage
+		v, _ := valueReader.ReadUint16()
+		meter.l3Voltage = int(v)
+		log.Printf("L3 Voltage: %d", meter.l3Voltage)
+	default:
+		log.Println("Unknown OBIS ID")
+	}
 
 	return nil
 }
