@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ghostiam/binstruct"
@@ -151,12 +152,103 @@ func decodeData(buf bytes.Buffer) error {
 	}
 
 	structLength, _ := reader.ReadUint8()
-
 	log.Printf("Struct with %d elements", structLength)
+
+	// Version identifier - first element
+	if typeField, _ := reader.ReadUint8(); typeField != 10 {
+		return fmt.Errorf("unexpected type field")
+	}
+	length, str, err := decodeString(reader)
+	if err != nil {
+		return err
+	}
+	log.Printf("Version identifier (%d): %s", length, str)
+
+	for i := 1; i <= (int(structLength)-1)/2; i++ {
+		// Each OBIS parameter consists of two elements, the identifier and the value.
+		typeField, err := reader.ReadUint8()
+		if err != nil || int(typeField) != 9 {
+			return fmt.Errorf("unexpected type field")
+		}
+
+		if err = decodeObisParameter(reader); err != nil {
+			return err
+		}
+	}
+
+	// Frame check sequence
+	_, b, err = reader.ReadBytes(2)
+	if err != nil {
+		return err
+	}
+	log.Printf("FCS: %s", hex.EncodeToString(b))
+
+	// Frame end flag
+	_, b, err = reader.ReadBytes(1)
+	if err != nil {
+		return err
+	}
+	if hex.EncodeToString(b) != "7e" {
+		return fmt.Errorf("Invalid frame end flag: %s", hex.EncodeToString(b))
+	}
+	log.Printf("Frame end flag: %s", hex.EncodeToString(b))
 
 	return nil
 }
 
-func decodeString(data []byte) (string, error) {
-	return "", nil
+func decodeObisParameter(reader binstruct.Reader) error {
+	identifierLength, _ := reader.ReadUint8()
+
+	var obisID string
+
+	for i := 1; i <= int(identifierLength); i++ {
+		n, err := reader.ReadUint8()
+		if err != nil {
+			return err
+		}
+		obisID = obisID + strconv.FormatUint(uint64(n), 10)
+		if int(i) < int(identifierLength) {
+			obisID = obisID + "."
+		}
+	}
+
+	log.Printf("OBIS ID: %s", obisID)
+
+	// Value part
+	valueType, err := reader.ReadUint8()
+	if err != nil {
+		return err
+	}
+
+	var value interface{}
+
+	switch valueType {
+	case 6: // unsigned, 4 bytes
+		_, byteValue, _ := reader.ReadBytes(4)
+		value = byteValue
+	case 10: // string
+		_, str, err := decodeString(reader)
+		if err != nil {
+			return err
+		}
+		value = str
+	case 18: // unsigned, 2 bytes
+		_, byteValue, _ := reader.ReadBytes(2)
+		value = byteValue
+	}
+
+	log.Printf("Value: %v", value)
+
+	return nil
+}
+
+func decodeString(reader binstruct.Reader) (int, string, error) {
+	length, _ := reader.ReadUint8()
+
+	n, b, err := reader.ReadBytes(int(length))
+	if err != nil {
+		return 0, "", err
+	}
+
+	return n, string(b), nil
 }
