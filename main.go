@@ -72,6 +72,7 @@ func main() {
 				log.Printf("Error decoding data: %v", err)
 			}
 
+			writeToDatabase()
 			outputBuffer.Reset()
 		}
 
@@ -82,10 +83,19 @@ func main() {
 	}
 }
 
-func readCPUStats() {
-	voltage := 230
+func writeToDatabase() {
+	str := fmt.Sprintf("active_power_plus,meter=%s value=%d\n", meter.meterID, meter.activePowerPlus)
+	str += fmt.Sprintf("active_power_minus,meter=%s value=%d\n", meter.meterID, meter.activePowerMinus)
+	str += fmt.Sprintf("reactive_power_plus,meter=%s value=%d\n", meter.meterID, meter.reactivePowerPlus)
+	str += fmt.Sprintf("reactive_power_minus,meter=%s value=%d\n", meter.meterID, meter.reactivePowerMinus)
+	str += fmt.Sprintf("l1_current,meter=%s value=%f\n", meter.meterID, meter.l1Current)
+	str += fmt.Sprintf("l2_current,meter=%s value=%f\n", meter.meterID, meter.l2Current)
+	str += fmt.Sprintf("l3_current,meter=%s value=%f\n", meter.meterID, meter.l3Current)
+	str += fmt.Sprintf("l1_voltage,meter=%s value=%d\n", meter.meterID, meter.l1Voltage)
+	str += fmt.Sprintf("l2_voltage,meter=%s value=%d\n", meter.meterID, meter.l2Voltage)
+	str += fmt.Sprintf("l3_voltage,meter=%s value=%d\n", meter.meterID, meter.l3Voltage)
 
-	r := strings.NewReader(fmt.Sprintf("kv65 voltage=%d", voltage))
+	r := strings.NewReader(str)
 
 	resp, err := http.Post("http://localhost:8086/write?db=meter", "application/x-www-form-urlencoded", r)
 	if err != nil {
