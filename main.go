@@ -84,16 +84,16 @@ func main() {
 }
 
 func writeToDatabase() {
-	str := fmt.Sprintf("active_power_plus,meter=%s value=%d\n", meter.meterID, meter.activePowerPlus)
-	str += fmt.Sprintf("active_power_minus,meter=%s value=%d\n", meter.meterID, meter.activePowerMinus)
-	str += fmt.Sprintf("reactive_power_plus,meter=%s value=%d\n", meter.meterID, meter.reactivePowerPlus)
-	str += fmt.Sprintf("reactive_power_minus,meter=%s value=%d\n", meter.meterID, meter.reactivePowerMinus)
-	str += fmt.Sprintf("l1_current,meter=%s value=%f\n", meter.meterID, meter.l1Current)
-	str += fmt.Sprintf("l2_current,meter=%s value=%f\n", meter.meterID, meter.l2Current)
-	str += fmt.Sprintf("l3_current,meter=%s value=%f\n", meter.meterID, meter.l3Current)
-	str += fmt.Sprintf("l1_voltage,meter=%s value=%d\n", meter.meterID, meter.l1Voltage)
-	str += fmt.Sprintf("l2_voltage,meter=%s value=%d\n", meter.meterID, meter.l2Voltage)
-	str += fmt.Sprintf("l3_voltage,meter=%s value=%d\n", meter.meterID, meter.l3Voltage)
+	str := fmt.Sprintf("data,meter=%s active_power_plus=%d\n", meter.meterID, meter.activePowerPlus)
+	str += fmt.Sprintf("data,meter=%s active_power_minus=%d\n", meter.meterID, meter.activePowerMinus)
+	str += fmt.Sprintf("data,meter=%s reactive_power_plus=%d\n", meter.meterID, meter.reactivePowerPlus)
+	str += fmt.Sprintf("data,meter=%s reactive_power_minus=%d\n", meter.meterID, meter.reactivePowerMinus)
+	str += fmt.Sprintf("data,meter=%s l1_current=%f\n", meter.meterID, meter.l1Current)
+	str += fmt.Sprintf("data,meter=%s l2_current=%f\n", meter.meterID, meter.l2Current)
+	str += fmt.Sprintf("data,meter=%s l3_current=%f\n", meter.meterID, meter.l3Current)
+	str += fmt.Sprintf("data,meter=%s l1_voltage=%d\n", meter.meterID, meter.l1Voltage)
+	str += fmt.Sprintf("data,meter=%s l2_voltage=%d\n", meter.meterID, meter.l2Voltage)
+	str += fmt.Sprintf("data,meter=%s l3_voltage=%d\n", meter.meterID, meter.l3Voltage)
 
 	r := strings.NewReader(str)
 
