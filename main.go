@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -44,13 +45,22 @@ type meterDataT struct {
 	l3Voltage          int
 }
 
+var device *string
+var influxURL *string
+var dbname *string
+
 var meter meterDataT
 
 func main() {
 	var outputBuffer bytes.Buffer
 	buffer := make([]byte, 1024)
 
-	stream, err := openSerialDevice("/dev/ttyUSB0")
+	device = flag.String("device", "/dev/ttyUSB0", "serial device name")
+	influxURL = flag.String("url", "http://localhost:8086", "InfluxDB URL")
+	dbname = flag.String("dbname", "meter", "InfluxDB database name")
+	flag.Parse()
+
+	stream, err := openSerialDevice(*device)
 	if err != nil {
 		log.Fatalf("Error opening serial port: %s", err.Error())
 	}
@@ -97,7 +107,7 @@ func writeToDatabase() {
 
 	r := strings.NewReader(str)
 
-	resp, err := http.Post("http://localhost:8086/write?db=meter", "application/x-www-form-urlencoded", r)
+	resp, err := http.Post(*influxURL+"/write?db="+*dbname, "application/x-www-form-urlencoded", r)
 	if err != nil {
 		log.Println(err.Error())
 	}
