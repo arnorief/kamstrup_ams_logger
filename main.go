@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -54,6 +55,8 @@ var meter meterDataT
 func main() {
 	var outputBuffer bytes.Buffer
 	buffer := make([]byte, 1024)
+
+	log.SetOutput(os.Stdout)
 
 	device = flag.String("device", "/dev/ttyUSB0", "serial device name")
 	influxURL = flag.String("url", "http://localhost:8086", "InfluxDB URL")
@@ -136,7 +139,7 @@ func openSerialDevice(device string) (*serial.Port, error) {
 }
 
 func decodeData(buf bytes.Buffer) error {
-	fmt.Printf("%s", hex.Dump(buf.Bytes()))
+	log.Printf("%s", hex.Dump(buf.Bytes()))
 
 	reader := binstruct.NewReaderFromBytes(buf.Bytes(), binary.BigEndian, false)
 
@@ -225,7 +228,7 @@ func decodeData(buf bytes.Buffer) error {
 	}
 	log.Printf("Frame end flag: %s", hex.EncodeToString(b))
 
-	log.Printf("Meter data: %v", meter)
+	log.Printf("Meter data: %v\n\n", meter)
 
 	return nil
 }
