@@ -40,6 +40,7 @@ type meterDataT struct {
 var device *string
 var influxURL *string
 var dbname *string
+var logfile *string
 
 var meter meterDataT
 
@@ -47,12 +48,22 @@ func main() {
 	var outputBuffer bytes.Buffer
 	buffer := make([]byte, 1024)
 
-	log.SetOutput(os.Stdout)
-
 	device = flag.String("device", "/dev/ttyUSB0", "serial device name")
 	influxURL = flag.String("url", "http://localhost:8086", "InfluxDB URL")
 	dbname = flag.String("dbname", "meter", "InfluxDB database name")
+	logfile = flag.String("log", "", "Debug log")
 	flag.Parse()
+
+	if *logfile != "" {
+		f, err := os.OpenFile(*logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatalf("Error opening file: %v", err)
+		}
+		log.SetOutput(f)
+		defer f.Close()
+	} else {
+		log.SetOutput(os.Stdout)
+	}
 
 	stream, err := openSerialDevice(*device)
 	if err != nil {

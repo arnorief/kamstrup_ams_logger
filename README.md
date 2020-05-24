@@ -20,12 +20,13 @@ Refer: https://www.kode24.no/guider/smart-meter-part-1-getting-the-meter-data/71
 
 ## Usage
 
-\<path to executable\>/kamstrup_ams_logger [-device SERIAL_DEVICE] [-url INFLUX_URL] [-dbname DATABSE_NAME]
+\<path to executable\>/kamstrup_ams_logger [-device SERIAL_DEVICE] [-url INFLUX_URL] [-dbname DATABSE_NAME] [-log LOGFILE]
 
 The parameters are optional, and their default values are as follows:
 * SERIAL_DEVICE: /dev/ttyUSB0
 * INFLUX_URL: http://localhost:8086
 * DATABASE_NAME: meter
+* LOGFILE: stdout
 
 The program logs by default to STDOUT.
 
