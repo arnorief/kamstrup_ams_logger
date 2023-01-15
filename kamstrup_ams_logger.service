@@ -1,0 +1,13 @@
+[Unit]
+Description=Kamstrup AMS meter logging service
+After=network.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=pi
+ExecStart=/home/pi/go/bin/kamstrup_ams_logger -device /dev/ttyUSB0 -log /var/log/kamstrup_ams_logger/debug.log
+
+[Install]
+WantedBy=multi-user.target
